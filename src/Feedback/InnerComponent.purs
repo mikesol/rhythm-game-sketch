@@ -62,8 +62,8 @@ render st = HH.div [ classes [ "w-full", "h-full" ] ]
   [ HH.div [ classes [ "flex", "flex-row", "w-full", "h-full" ] ]
       [ HH.div [ classes [ "flex-grow" ] ] [ HH.div_ [] ]
       , HH.div [ classes [ "flex-grow-0", "flex", "flex-col" ] ]
-          [ HH.div [ classes [ "flex-grow" ] ]
-              []
+          [ HH.div [ classes [ "flex-grow", "text-2xl" ] ]
+              [HH.text "The four dots correspond to the keys A S D F."]
           , HH.div [ classes [ "flex" ] ]
               [ HH.canvas
                   [ HP.ref (H.RefLabel "canvas")

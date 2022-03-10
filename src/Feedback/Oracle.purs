@@ -4,14 +4,14 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Comonad.Cofree.Class (unwrapCofree)
+import Data.Array as Array
 import Data.Homogeneous.Record (fromHomogeneous, homogeneous)
 import Data.Lens (Lens', over, set, view)
 import Data.Lens.Record (prop)
-import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (unwrap, wrap)
-import Data.Set (Set, delete, filter, findMin, insert, size)
+import Data.Traversable (traverse)
 import Data.Tuple (fst, snd)
 import Data.Tuple.Nested ((/\), type (/\))
 import Feedback.FullGraph (FullGraph)
@@ -22,25 +22,35 @@ import WAGS.Control.Functions (imodifyRes)
 import WAGS.Control.Indexed (IxWAG)
 import WAGS.Run (RunAudio, RunEngine, TriggeredScene(..))
 
+doPlays :: forall proof. Number -> Acc -> IxWAG RunAudio RunEngine proof Res FullGraph FullGraph Acc
+doPlays time acc = do
+  newStaged <- traverse
+    ( Array.fromFoldable >>>
+        traverse \tp@(a /\ tf /\ b) ->
+          if not (not tf && a - time < 0.15) then pure tp
+          else do
+            unTriggerAudio (extract acc.triggers) { buffer: b, timeOffset: max 0.0 (a - time) }
+            pure $ a /\ true /\ b
+    )
+    (homogeneous acc.staged)
+  pure (acc { staged = fromHomogeneous newStaged })
+
 actOn
-  :: forall proof
-   . Number
+  :: Number
   -> Acc
   -> (forall a. Lens' (KeyMap a) a)
-  -> IxWAG RunAudio RunEngine proof Res FullGraph FullGraph Acc
+  -> Acc
 actOn time acc lnz = out
   where
   possible = view lnz acc.staged
-  out = case findMin possible of
-    Nothing -> pure (acc { results = set lnz Fail acc.results })
-    Just a ->
+  out = case Array.uncons possible of
+    Nothing -> acc { results = set lnz Fail acc.results }
+    Just { head } ->
       let
-        gap = abs (fst a - time)
-        bf = unTriggerAudio (extract acc.triggers) { buffer: snd a }
+        gap = abs (fst head - time)
       in
-        bf $> acc
-          { staged = set lnz (delete a possible) acc.staged
-          , results = set lnz
+        acc
+          { results = set lnz
               ( if gap < 0.05 then Great
                 else if gap < 0.18 then Meh
                 else Fail
@@ -49,10 +59,10 @@ actOn time acc lnz = out
           , triggers = unwrap $ unwrapCofree acc.triggers
           }
 
-doFail :: Number -> Number -> Set Note -> Result -> Set Note /\ Result
-doFail time wdw s r = pruned /\ if size pruned < size s then Fail else r
+doFail :: Number -> Number -> Array Note -> Result -> Array Note /\ Result
+doFail time wdw s r = pruned /\ if Array.length pruned < Array.length s then Fail else r
   where
-  pruned = filter (\(x /\ _) -> x > time + wdw) s
+  pruned = Array.dropWhile (\(x /\ _) -> x + wdw <= time) s
 
 doFails :: Number -> Number -> Acc -> Acc
 doFails time wdw acc = acc
@@ -65,13 +75,10 @@ doFails time wdw acc = acc
   nw = doFail time wdw <$> stg <*> rs
 
 modifyAcc :: Number -> Number -> Acc -> Acc
-modifyAcc time wdw acc =
-  case acc.notes of
-    Nil -> acc
-    (nxt : rest) ->
+modifyAcc time wdw acc = let nxt = extract acc.notes in
       if fst nxt < time + wdw then modifyAcc time wdw
         ( acc
-            { notes = rest
+            { notes = unwrap $ unwrapCofree acc.notes
             , staged = over
                 ( case fst $ snd nxt of
                     AKey -> prop (Proxy :: Proxy "a")
@@ -79,7 +86,7 @@ modifyAcc time wdw acc =
                     DKey -> prop (Proxy :: Proxy "d")
                     FKey -> prop (Proxy :: Proxy "f")
                 )
-                (insert (fst nxt /\ (snd $ snd nxt)))
+                (flip Array.snoc (fst nxt /\ false /\ (snd $ snd nxt)))
                 acc.staged
             }
         )
@@ -103,12 +110,12 @@ oracle
   in
     do
       acc <- case trigger of
-        Thunk -> pure (doFails time failWindow a)
+        Thunk -> doFails time failWindow <$> doPlays time a
         Key key ->
           let
             ao = actOn time a
           in
-            case key of
+            pure case key of
               AKey -> ao (prop (Proxy :: _ "a"))
               SKey -> ao (prop (Proxy :: _ "s"))
               DKey -> ao (prop (Proxy :: _ "d"))

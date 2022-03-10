@@ -7,7 +7,6 @@ import Data.Identity (Identity)
 import Data.List (List)
 import Data.Monoid.Additive (Additive)
 import Data.Monoid.Endo (Endo)
-import Data.Set (Set)
 import Data.Tuple.Nested (type (/\))
 import Feedback.FullGraph (FullGraph)
 import WAGS.Control.Indexed (IxWAG)
@@ -51,7 +50,7 @@ derive instance Ord Key
 
 type NoteToKey = Number /\ Key /\ BrowserAudioBuffer
 
-type Note = Number /\ BrowserAudioBuffer
+type Note = Number /\ Boolean /\ BrowserAudioBuffer
 
 type World =
   { buffers :: Buffers
@@ -67,14 +66,14 @@ type Res =
 
 newtype TriggerAudio = TriggerAudio
   ( forall proof
-     . { buffer :: BrowserAudioBuffer }
+     . { buffer :: BrowserAudioBuffer, timeOffset :: Number }
     -> IxWAG RunAudio RunEngine proof Res FullGraph FullGraph Unit
   )
 
 unTriggerAudio
   :: TriggerAudio
   -> forall proof
-   . { buffer :: BrowserAudioBuffer }
+   . { buffer :: BrowserAudioBuffer, timeOffset :: Number }
   -> IxWAG RunAudio RunEngine proof Res FullGraph FullGraph Unit
 unTriggerAudio (TriggerAudio ta) = ta
 
@@ -87,12 +86,12 @@ type KeyMap tp =
 
 data Result = None | Fail | Meh | Great
 
-type Staged = KeyMap (Set Note)
+type Staged = KeyMap (Array Note)
 type Results = KeyMap Result
 
 type Acc =
   { triggers :: Cofree Identity TriggerAudio
   , staged :: Staged
-  , notes :: List NoteToKey
+  , notes :: Cofree Identity NoteToKey
   , results :: Results
   }

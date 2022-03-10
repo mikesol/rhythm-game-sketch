@@ -2,6 +2,7 @@
 , name = "mosaic"
 , dependencies =
   [ "aff"
+  , "arrays"
   , "canvas"
   , "colors"
   , "console"
@@ -19,6 +20,7 @@
   , "math"
   , "maybe"
   , "newtype"
+  , "nonempty"
   , "ordered-collections"
   , "painting"
   , "parallel"

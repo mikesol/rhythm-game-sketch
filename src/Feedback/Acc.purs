@@ -4,7 +4,9 @@ import Prelude
 
 import Control.Comonad.Cofree (Cofree, deferCofree)
 import Data.Identity (Identity(..))
+import Data.Lens (_1, over, traversed)
 import Data.List (List(..), (:))
+import Data.NonEmpty (NonEmpty, (:|))
 import Data.Symbol (class IsSymbol)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
@@ -16,15 +18,21 @@ import Prim.Symbol (class Append)
 import Type.Proxy (Proxy(..))
 import WAGS.Change (ichange')
 import WAGS.Graph.AudioUnit (TPlayBuf)
-import WAGS.Graph.Parameter (_offOn)
+import WAGS.Graph.Parameter (AudioOnOff(..), _offOn)
+
+l2cf :: forall a. Number -> NonEmpty List (Tuple Number a) -> Cofree Identity (Tuple Number a)
+l2cf n i = go 0.0 i
+  where
+  go x (a :| Nil) = deferCofree (\_ -> Tuple a $ Identity (go (x + n) (over (traversed <<< _1) (add (x + n)) i)))
+  go x (a :| (b : c)) = deferCofree (\_ -> Tuple a $ Identity (go x (b :| c)))
 
 initialAcc :: Buffers -> Acc
 initialAcc b =
   { triggers
   , staged: mempty
   , results: { a: None, s: None, d: None, f: None }
-  , notes: (2.0 /\ AKey /\ b.c1)
-      : (2.5 /\ AKey /\ b.c1)
+  , notes: l2cf 10.0 $ (2.0 /\ AKey /\ b.c1) :|
+       (2.5 /\ AKey /\ b.c1)
       : (3.0 /\ SKey /\ b.g1)
       : (3.5 /\ SKey /\ b.g1)
       : (4.0 /\ FKey /\ b.a1)
@@ -65,9 +73,9 @@ else instance
   cofreeN2S i = deferCofree
     ( \_ -> Tuple
         ( TriggerAudio
-            ( \{ buffer } ->
+            ( \{ buffer, timeOffset } ->
                 ichange' (Proxy :: _ wavs)
-                  { onOff: _offOn, buffer }
+                  { onOff: AudioOnOff { onOff: _offOn, timeOffset }, buffer }
             )
         )
         (Identity (cofreeN2S (pred i)))
