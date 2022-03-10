@@ -104,7 +104,7 @@ handleAction buffers = case _ of
             ff = void $ flip requestAnimationFrame w do
               r' <- Ref.read running
               when r' do
-                Log.info  "running"
+                -- Log.info  "running"
                 k Thunk
                 ff
           ff
