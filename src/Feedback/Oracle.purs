@@ -61,7 +61,10 @@ actOn time acc lnz = out
           }
 
 doFail :: Number -> Number -> Array Note -> Result -> Array Note /\ Result
-doFail time wdw s r = rest /\ if foldl (&&) true (map (view (_2 <<< _2 <<< _1)) init) then r else Fail
+doFail time wdw s r = rest
+  /\
+    if foldl (&&) true (map (view (_2 <<< _2 <<< _1)) init) then r
+    else Fail
   where
   { init, rest } = Array.span (\(x /\ _) -> x + wdw <= time) s
 
