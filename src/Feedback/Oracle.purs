@@ -6,12 +6,12 @@ import Control.Comonad (extract)
 import Control.Comonad.Cofree.Class (unwrapCofree)
 import Data.Array as Array
 import Data.Homogeneous.Record (fromHomogeneous, homogeneous)
-import Data.Lens (Lens', over, set, view)
+import Data.Lens (Lens', _1, _2, over, set, view)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (unwrap, wrap)
-import Data.Traversable (traverse)
+import Data.Traversable (foldl, traverse)
 import Data.Tuple (fst, snd)
 import Data.Tuple.Nested ((/\), type (/\))
 import Feedback.FullGraph (FullGraph)
@@ -26,11 +26,11 @@ doPlays :: forall proof. Number -> Acc -> IxWAG RunAudio RunEngine proof Res Ful
 doPlays time acc = do
   newStaged <- traverse
     ( Array.fromFoldable >>>
-        traverse \tp@(a /\ tf /\ b) ->
+        traverse \tp@(a /\ tf /\ b /\ c) ->
           if not (not tf && a - time < 0.15) then pure tp
           else do
-            unTriggerAudio (extract acc.triggers) { buffer: b, timeOffset: max 0.0 (a - time) }
-            pure $ a /\ true /\ b
+            unTriggerAudio (extract acc.triggers) { buffer: c, timeOffset: max 0.0 (a - time) }
+            pure $ a /\ true /\ b /\ c
     )
     (homogeneous acc.staged)
   pure (acc { staged = fromHomogeneous newStaged })
@@ -45,12 +45,13 @@ actOn time acc lnz = out
   possible = view lnz acc.staged
   out = case Array.uncons possible of
     Nothing -> acc { results = set lnz Fail acc.results }
-    Just { head } ->
+    Just { head, tail } ->
       let
         gap = abs (fst head - time)
       in
         acc
-          { results = set lnz
+          { staged = set lnz (Array.cons (set (_2 <<< _2 <<< _1) true head) tail) acc.staged
+          , results = set lnz
               ( if gap < 0.05 then Great
                 else if gap < 0.18 then Meh
                 else Fail
@@ -60,9 +61,9 @@ actOn time acc lnz = out
           }
 
 doFail :: Number -> Number -> Array Note -> Result -> Array Note /\ Result
-doFail time wdw s r = pruned /\ if Array.length pruned < Array.length s then Fail else r
+doFail time wdw s r = rest /\ if foldl (&&) true (map (view (_2 <<< _2 <<< _1)) init) then r else Fail
   where
-  pruned = Array.dropWhile (\(x /\ _) -> x + wdw <= time) s
+  { init, rest } = Array.span (\(x /\ _) -> x + wdw <= time) s
 
 doFails :: Number -> Number -> Acc -> Acc
 doFails time wdw acc = acc
@@ -75,22 +76,25 @@ doFails time wdw acc = acc
   nw = doFail time wdw <$> stg <*> rs
 
 modifyAcc :: Number -> Number -> Acc -> Acc
-modifyAcc time wdw acc = let nxt = extract acc.notes in
-      if fst nxt < time + wdw then modifyAcc time wdw
-        ( acc
-            { notes = unwrap $ unwrapCofree acc.notes
-            , staged = over
-                ( case fst $ snd nxt of
-                    AKey -> prop (Proxy :: Proxy "a")
-                    SKey -> prop (Proxy :: Proxy "s")
-                    DKey -> prop (Proxy :: Proxy "d")
-                    FKey -> prop (Proxy :: Proxy "f")
-                )
-                (flip Array.snoc (fst nxt /\ false /\ (snd $ snd nxt)))
-                acc.staged
-            }
-        )
-      else acc
+modifyAcc time wdw acc =
+  let
+    nxt = extract acc.notes
+  in
+    if fst nxt < time + wdw then modifyAcc time wdw
+      ( acc
+          { notes = unwrap $ unwrapCofree acc.notes
+          , staged = over
+              ( case fst $ snd nxt of
+                  AKey -> prop (Proxy :: Proxy "a")
+                  SKey -> prop (Proxy :: Proxy "s")
+                  DKey -> prop (Proxy :: Proxy "d")
+                  FKey -> prop (Proxy :: Proxy "f")
+              )
+              (flip Array.snoc (fst nxt /\ false /\ false /\ (snd $ snd nxt)))
+              acc.staged
+          }
+      )
+    else acc
 
 oracle
   :: forall proof

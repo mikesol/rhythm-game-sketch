@@ -50,7 +50,7 @@ derive instance Ord Key
 
 type NoteToKey = Number /\ Key /\ BrowserAudioBuffer
 
-type Note = Number /\ Boolean /\ BrowserAudioBuffer
+type Note = Number /\ Boolean /\ Boolean /\ BrowserAudioBuffer
 
 type World =
   { buffers :: Buffers
