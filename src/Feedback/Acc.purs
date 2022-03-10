@@ -6,6 +6,7 @@ import Control.Comonad.Cofree (Cofree, deferCofree)
 import Data.Identity (Identity(..))
 import Data.Lens (_1, over, traversed)
 import Data.List (List(..), (:))
+import Data.Maybe (Maybe(..))
 import Data.NonEmpty (NonEmpty, (:|))
 import Data.Symbol (class IsSymbol)
 import Data.Tuple (Tuple(..))
@@ -30,6 +31,7 @@ initialAcc :: Buffers -> Acc
 initialAcc b =
   { triggers
   , staged: mempty
+  , lastConsumed: Nothing
   , results: { a: None, s: None, d: None, f: None }
   , notes: l2cf 10.0 $ (2.0 /\ AKey /\ b.c1) :|
        (2.5 /\ AKey /\ b.c1)

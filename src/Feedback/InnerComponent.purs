@@ -3,7 +3,8 @@ module Feedback.InnerComponent where
 import Prelude
 
 import Color (rgb)
-import Control.Alt ((<|>))
+import Data.Array (dropEnd, length)
+import Data.DateTime.Instant (unInstant)
 import Data.Homogeneous.Record (homogeneous)
 import Data.List (List(..), foldl)
 import Data.Maybe (Maybe(..))
@@ -12,9 +13,10 @@ import Data.Traversable (for_, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect)
-import Effect.Class.Console as Log
 import Effect.Ref as Ref
-import FRP.Event (makeEvent, subscribe)
+import FRP.Behavior (sampleBy, step)
+import FRP.Behavior.Time (instant)
+import FRP.Event (fold, makeEvent, subscribe)
 import Feedback.Control (Action(..), State)
 import Feedback.Engine (piece)
 import Feedback.Oracle (oracle)
@@ -34,7 +36,7 @@ import WAGS.Interpret (close, context, makeFFIAudioSnapshot)
 import WAGS.Run (TriggeredRun, runNoLoop)
 import Web.Event.EventTarget (addEventListener, eventListener, removeEventListener)
 import Web.HTML (window)
-import Web.HTML.Window (cancelAnimationFrame, document, requestAnimationFrame)
+import Web.HTML.Window (document, requestAnimationFrame)
 import Web.UIEvent.KeyboardEvent (fromEvent, key)
 import Web.UIEvent.KeyboardEvent.EventTypes (keydown)
 
@@ -63,7 +65,7 @@ render st = HH.div [ classes [ "w-full", "h-full" ] ]
       [ HH.div [ classes [ "flex-grow" ] ] [ HH.div_ [] ]
       , HH.div [ classes [ "flex-grow-0", "flex", "flex-col" ] ]
           [ HH.div [ classes [ "flex-grow", "text-2xl" ] ]
-              [HH.text "The four dots correspond to the keys A S D F."]
+              [ HH.text "The four dots correspond to the keys A S D F." ]
           , HH.div [ classes [ "flex" ] ]
               [ HH.canvas
                   [ HP.ref (H.RefLabel "canvas")
@@ -115,10 +117,10 @@ handleAction buffers = case _ of
           el <- eventListener \e -> do
             for_ (fromEvent e) \kb -> do
               case key kb of
-                "a" -> k (Key AKey)
-                "s" -> k (Key SKey)
-                "d" -> k (Key DKey)
-                "f" -> k (Key FKey)
+                "a" -> k AKey
+                "s" -> k SKey
+                "d" -> k DKey
+                "f" -> k FKey
                 _ -> pure unit
           addEventListener keydown el true (unsafeCoerce d)
           pure $ removeEventListener keydown el true (unsafeCoerce d)
@@ -136,12 +138,13 @@ handleAction buffers = case _ of
         H.liftEffect
           $ subscribe
               ( runNoLoop
-                  (animationFrameEvent <|> keyEvent)
-                  ( pure
-                      { buffers
-                      , upcomingNoteWindow
-                      , failWindow: 0.2
-                      }
+                  (animationFrameEvent)
+                  ( { buffers
+                    , upcomingNoteWindow
+                    , failWindow: 0.2
+                    , mostRecent: _
+                    } <$> step []
+                      (flip (fold (\a b -> [a]<>(dropEnd (max 0 (length b - 31)) b))) [] (sampleBy Tuple ((unInstant >>> unwrap) <$> instant) keyEvent))
                   )
                   {}
                   ffiAudio
@@ -168,9 +171,9 @@ handleAction buffers = case _ of
                       (Tuple <$> xpos <*> homogeneous rslts)
                     dots = foldl
                       ( \b (Tuple x r) -> b <> foldl
-                          ( \b' (Tuple n _) -> b' <> filled
+                          ( \b' { starts } -> b' <> filled
                               (fillColor (rgb 100 100 100))
-                              (circle x (400.0 - ((n - unwrap (o.res.time)) * 410.0 / upcomingNoteWindow)) 10.0)
+                              (circle x (400.0 - ((starts - unwrap (o.res.time)) * 410.0 / upcomingNoteWindow)) 10.0)
                           )
                           mempty
                           r

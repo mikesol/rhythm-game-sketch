@@ -4,18 +4,19 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Comonad.Cofree.Class (unwrapCofree)
+import Data.Array (uncons)
 import Data.Array as Array
 import Data.Homogeneous.Record (fromHomogeneous, homogeneous)
-import Data.Lens (Lens', _1, _2, over, set, view)
+import Data.Lens (Lens', over, set, view)
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isJust)
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (foldl, traverse)
 import Data.Tuple (fst, snd)
 import Data.Tuple.Nested ((/\), type (/\))
 import Feedback.FullGraph (FullGraph)
-import Feedback.Types (Acc, Key(..), KeyMap, Note, Res, Result(..), Trigger(..), World, unTriggerAudio)
+import Feedback.Types (Acc, Key(..), KeyMap, Note, Res, Result(..), Results, Staged, Trigger, World, unTriggerAudio)
 import Math (abs)
 import Type.Proxy (Proxy(..))
 import WAGS.Control.Functions (imodifyRes)
@@ -26,47 +27,22 @@ doPlays :: forall proof. Number -> Acc -> IxWAG RunAudio RunEngine proof Res Ful
 doPlays time acc = do
   newStaged <- traverse
     ( Array.fromFoldable >>>
-        traverse \tp@(a /\ tf /\ b /\ c) ->
-          if not (not tf && a - time < 0.15) then pure tp
+        traverse \tp ->
+          if not (not tp.hasPlayed && tp.starts - time < 0.15) then pure tp
           else do
-            unTriggerAudio (extract acc.triggers) { buffer: c, timeOffset: max 0.0 (a - time) }
-            pure $ a /\ true /\ b /\ c
+            unTriggerAudio (extract acc.triggers) { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
+            pure $ tp { hasPlayed = true }
     )
     (homogeneous acc.staged)
   pure (acc { staged = fromHomogeneous newStaged })
 
-actOn
-  :: Number
-  -> Acc
-  -> (forall a. Lens' (KeyMap a) a)
-  -> Acc
-actOn time acc lnz = out
-  where
-  possible = view lnz acc.staged
-  out = case Array.uncons possible of
-    Nothing -> acc { results = set lnz Fail acc.results }
-    Just { head, tail } ->
-      let
-        gap = abs (fst head - time)
-      in
-        acc
-          { staged = set lnz (Array.cons (set (_2 <<< _2 <<< _1) true head) tail) acc.staged
-          , results = set lnz
-              ( if gap < 0.05 then Great
-                else if gap < 0.18 then Meh
-                else Fail
-              )
-              acc.results
-          , triggers = unwrap $ unwrapCofree acc.triggers
-          }
-
 doFail :: Number -> Number -> Array Note -> Result -> Array Note /\ Result
 doFail time wdw s r = rest
   /\
-    if foldl (&&) true (map (view (_2 <<< _2 <<< _1)) init) then r
+    if foldl (&&) true (map (isJust <<< _.keyMatch) init) then r
     else Fail
   where
-  { init, rest } = Array.span (\(x /\ _) -> x + wdw <= time) s
+  { init, rest } = Array.span (\x -> x.starts + wdw <= time) s
 
 doFails :: Number -> Number -> Acc -> Acc
 doFails time wdw acc = acc
@@ -93,11 +69,66 @@ modifyAcc time wdw acc =
                   DKey -> prop (Proxy :: Proxy "d")
                   FKey -> prop (Proxy :: Proxy "f")
               )
-              (flip Array.snoc (fst nxt /\ false /\ false /\ (snd $ snd nxt)))
+              ( flip Array.snoc
+                  { starts: fst nxt
+                  , keyMatch: Nothing
+                  , hasPlayed: false
+                  , buffer: snd $ snd nxt
+                  }
+              )
               acc.staged
           }
       )
     else acc
+
+newStagedResults :: Key -> Number -> Number -> Number -> (forall a. Lens' (KeyMap a) a) -> Staged -> Results -> Staged /\ Results
+newStagedResults ky time sysTime keytime lnz staged results =
+  newStaged /\ newResults
+  where
+  oldResult = view lnz results
+  oldStaged = view lnz staged
+  stagedHead = Array.uncons oldStaged
+  nsr = case stagedHead of
+    Nothing -> [] /\ Fail
+    Just { head, tail } ->
+      if isJust head.keyMatch then oldStaged /\ oldResult
+      else Array.cons (head { keyMatch = Just keytime }) tail /\
+        let
+          gap = abs (((sysTime / 1000.0) - time) + head.starts - (keytime / 1000.0))
+        in
+          if gap < 0.05 then Great
+          else if gap < 0.18 then Meh
+          else Fail
+  -- ___ = spy "NSR" (show ky /\ nsr)
+  newStaged = set lnz (fst nsr) staged
+  newResults = set lnz (snd nsr) results
+
+treatMostRecent :: Number -> Number -> Array (Number /\ Key) -> Acc -> Acc
+treatMostRecent = go true
+  where
+  go starting time sysTime notes acc =
+    case uncons notes of
+      Nothing -> acc
+      Just { head, tail } ->
+        if Just head == acc.lastConsumed then acc
+        else
+         (if starting then (_ { lastConsumed = Just head }) else identity) $ go false time sysTime tail
+          ( let
+              sr = newStagedResults (snd head) time sysTime (fst head)
+                ( case snd head of
+                    AKey -> prop (Proxy :: _ "a")
+                    SKey -> prop (Proxy :: _ "s")
+                    DKey -> prop (Proxy :: _ "d")
+                    FKey -> prop (Proxy :: _ "f")
+                )
+                acc.staged
+                acc.results
+            in
+              acc
+                { staged = fst sr
+                , results = snd sr
+                }
+          )
 
 oracle
   :: forall proof
@@ -107,26 +138,18 @@ oracle
 oracle
   ( TriggeredScene
       { time
-      , trigger
-      , world: { upcomingNoteWindow, failWindow }
+      , sysTime
+      , world: { upcomingNoteWindow, failWindow, mostRecent }
       }
   )
   a' =
   let
-    a = modifyAcc time upcomingNoteWindow a'
+    a =
+      treatMostRecent time (unwrap sysTime) mostRecent
+        $ modifyAcc time upcomingNoteWindow a'
   in
     do
-      acc <- case trigger of
-        Thunk -> doFails time failWindow <$> doPlays time a
-        Key key ->
-          let
-            ao = actOn time a
-          in
-            pure case key of
-              AKey -> ao (prop (Proxy :: _ "a"))
-              SKey -> ao (prop (Proxy :: _ "s"))
-              DKey -> ao (prop (Proxy :: _ "d"))
-              FKey -> ao (prop (Proxy :: _ "f"))
+      acc <- doFails time failWindow <$> doPlays time a
       imodifyRes
         ( const
             { staged: acc.staged

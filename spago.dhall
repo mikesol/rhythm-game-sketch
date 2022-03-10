@@ -3,10 +3,12 @@
 , dependencies =
   [ "aff"
   , "arrays"
+  , "behaviors"
   , "canvas"
   , "colors"
   , "console"
   , "control"
+  , "datetime"
   , "effect"
   , "event"
   , "foldable-traversable"

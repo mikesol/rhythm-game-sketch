@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Comonad.Cofree (Cofree)
 import Data.Identity (Identity)
-import Data.List (List)
+import Data.Maybe (Maybe)
 import Data.Monoid.Additive (Additive)
 import Data.Monoid.Endo (Endo)
 import Data.Tuple.Nested (type (/\))
@@ -42,20 +42,32 @@ type Buffers =
 
   }
 
-data Trigger = Thunk | Key Key
+data Trigger = Thunk
+
 data Key = AKey | SKey | DKey | FKey
 
 derive instance Eq Key
 derive instance Ord Key
+instance Show Key where
+  show AKey = "A"
+  show SKey = "S"
+  show DKey = "D"
+  show FKey = "F"
 
 type NoteToKey = Number /\ Key /\ BrowserAudioBuffer
 
-type Note = Number /\ Boolean /\ Boolean /\ BrowserAudioBuffer
+type Note =
+  { starts :: Number
+  , keyMatch :: Maybe Number
+  , hasPlayed :: Boolean
+  , buffer :: BrowserAudioBuffer
+  }
 
 type World =
   { buffers :: Buffers
   , upcomingNoteWindow :: Number
   , failWindow :: Number
+  , mostRecent :: Array (Number /\ Key)
   }
 
 type Res =
@@ -94,4 +106,5 @@ type Acc =
   , staged :: Staged
   , notes :: Cofree Identity NoteToKey
   , results :: Results
+  , lastConsumed :: Maybe (Number /\ Key)
   }
