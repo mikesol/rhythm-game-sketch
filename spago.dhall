@@ -29,6 +29,7 @@
   , "prelude"
   , "profunctor-lenses"
   , "refs"
+  , "transformers"
   , "tuples"
   , "typelevel"
   , "unsafe-coerce"
