@@ -31,8 +31,8 @@ doPlays time acc = do
     ( traverse
         ( \tp -> do
             a <- get
-            lift $ unTriggerAudio (extract acc.triggers) { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
-            put (a { triggers = unwrap $ unwrapCofree acc.triggers })
+            lift $ unTriggerAudio (extract a.triggers) { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
+            put (a { triggers = unwrap $ unwrapCofree a.triggers })
         )
         (split.init)
     )
