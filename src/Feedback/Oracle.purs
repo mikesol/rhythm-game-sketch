@@ -12,11 +12,11 @@ import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (unwrap, wrap)
-import Data.Traversable (foldl, traverse)
+import Data.Traversable (foldl, for_)
 import Data.Tuple (fst, snd)
 import Data.Tuple.Nested ((/\), type (/\))
 import Feedback.FullGraph (FullGraph)
-import Feedback.Types (Acc, Key(..), KeyMap, Note, Res, Result(..), Results, Staged, Trigger, World, unTriggerAudio)
+import Feedback.Types (Acc, Key(..), KeyMap, Res, Result(..), Results, Staged, Trigger, VisualNote, World, unTriggerAudio)
 import Math (abs)
 import Type.Proxy (Proxy(..))
 import WAGS.Control.Functions (imodifyRes)
@@ -25,18 +25,12 @@ import WAGS.Run (RunAudio, RunEngine, TriggeredScene(..))
 
 doPlays :: forall proof. Number -> Acc -> IxWAG RunAudio RunEngine proof Res FullGraph FullGraph Acc
 doPlays time acc = do
-  newStaged <- traverse
-    ( Array.fromFoldable >>>
-        traverse \tp ->
-          if not (not tp.hasPlayed && tp.starts - time < 0.15) then pure tp
-          else do
-            unTriggerAudio (extract acc.triggers) { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
-            pure $ tp { hasPlayed = true }
-    )
-    (homogeneous acc.staged)
-  pure (acc { staged = fromHomogeneous newStaged })
+  let split = Array.span (\tp -> tp.starts - time < 0.15) acc.stagedAudio
+  for_ split.init \tp ->
+    unTriggerAudio (extract acc.triggers) { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
+  pure (acc { stagedAudio = split.rest })
 
-doFail :: Number -> Number -> Array Note -> Result -> Array Note /\ Result
+doFail :: Number -> Number -> Array VisualNote -> Result -> Array VisualNote /\ Result
 doFail time wdw s r = rest
   /\
     if foldl (&&) true (map (isJust <<< _.keyMatch) init) then r
@@ -47,10 +41,10 @@ doFail time wdw s r = rest
 doFails :: Number -> Number -> Acc -> Acc
 doFails time wdw acc = acc
   { results = fromHomogeneous $ map snd nw
-  , staged = fromHomogeneous $ map fst nw
+  , stagedVisual = fromHomogeneous $ map fst nw
   }
   where
-  stg = homogeneous acc.staged
+  stg = homogeneous acc.stagedVisual
   rs = homogeneous acc.results
   nw = doFail time wdw <$> stg <*> rs
 
@@ -62,7 +56,12 @@ modifyAcc time wdw acc =
     if fst nxt < time + wdw then modifyAcc time wdw
       ( acc
           { notes = unwrap $ unwrapCofree acc.notes
-          , staged = over
+          , stagedAudio = acc.stagedAudio <>
+              [ { starts: fst nxt
+                , buffer: snd $ snd nxt
+                }
+              ]
+          , stagedVisual = over
               ( case fst $ snd nxt of
                   AKey -> prop (Proxy :: Proxy "a")
                   SKey -> prop (Proxy :: Proxy "s")
@@ -72,11 +71,9 @@ modifyAcc time wdw acc =
               ( flip Array.snoc
                   { starts: fst nxt
                   , keyMatch: Nothing
-                  , hasPlayed: false
-                  , buffer: snd $ snd nxt
                   }
               )
-              acc.staged
+              acc.stagedVisual
           }
       )
     else acc
@@ -112,23 +109,23 @@ treatMostRecent = go true
       Just { head, tail } ->
         if Just head == acc.lastConsumed then acc
         else
-         (if starting then (_ { lastConsumed = Just head }) else identity) $ go false time sysTime tail
-          ( let
-              sr = newStagedResults (snd head) time sysTime (fst head)
-                ( case snd head of
-                    AKey -> prop (Proxy :: _ "a")
-                    SKey -> prop (Proxy :: _ "s")
-                    DKey -> prop (Proxy :: _ "d")
-                    FKey -> prop (Proxy :: _ "f")
-                )
-                acc.staged
-                acc.results
-            in
-              acc
-                { staged = fst sr
-                , results = snd sr
-                }
-          )
+          (if starting then (_ { lastConsumed = Just head }) else identity) $ go false time sysTime tail
+            ( let
+                sr = newStagedResults (snd head) time sysTime (fst head)
+                  ( case snd head of
+                      AKey -> prop (Proxy :: _ "a")
+                      SKey -> prop (Proxy :: _ "s")
+                      DKey -> prop (Proxy :: _ "d")
+                      FKey -> prop (Proxy :: _ "f")
+                  )
+                  acc.stagedVisual
+                  acc.results
+              in
+                acc
+                  { stagedVisual = fst sr
+                  , results = snd sr
+                  }
+            )
 
 oracle
   :: forall proof
@@ -152,7 +149,7 @@ oracle
       acc <- doFails time failWindow <$> doPlays time a
       imodifyRes
         ( const
-            { staged: acc.staged
+            { staged: acc.stagedVisual
             , results: (Endo \_ -> acc.results)
             , time: wrap time
             }

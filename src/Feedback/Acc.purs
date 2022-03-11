@@ -3,6 +3,7 @@ module Feedback.Acc where
 import Prelude
 
 import Control.Comonad.Cofree (Cofree, deferCofree)
+import Control.Plus (empty)
 import Data.Identity (Identity(..))
 import Data.Lens (_1, over, traversed)
 import Data.List (List(..), (:))
@@ -30,7 +31,8 @@ l2cf n i = go 0.0 i
 initialAcc :: Buffers -> Acc
 initialAcc b =
   { triggers
-  , staged: mempty
+  , stagedVisual: mempty
+  , stagedAudio: empty
   , lastConsumed: Nothing
   , results: { a: None, s: None, d: None, f: None }
   , notes: l2cf 10.0 $ (2.0 /\ AKey /\ b.c1) :|

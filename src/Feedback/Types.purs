@@ -56,10 +56,13 @@ instance Show Key where
 
 type NoteToKey = Number /\ Key /\ BrowserAudioBuffer
 
-type Note =
+type VisualNote =
   { starts :: Number
   , keyMatch :: Maybe Number
-  , hasPlayed :: Boolean
+  }
+
+type AudioNote =
+  { starts :: Number
   , buffer :: BrowserAudioBuffer
   }
 
@@ -98,12 +101,13 @@ type KeyMap tp =
 
 data Result = None | Fail | Meh | Great
 
-type Staged = KeyMap (Array Note)
+type Staged = KeyMap (Array VisualNote)
 type Results = KeyMap Result
 
 type Acc =
   { triggers :: Cofree Identity TriggerAudio
-  , staged :: Staged
+  , stagedVisual :: Staged
+  , stagedAudio :: Array AudioNote
   , notes :: Cofree Identity NoteToKey
   , results :: Results
   , lastConsumed :: Maybe (Number /\ Key)
