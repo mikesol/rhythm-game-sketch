@@ -4,7 +4,6 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Comonad.Cofree.Class (unwrapCofree)
-import Control.Monad.State (execStateT, get, lift, put)
 import Data.Array (uncons)
 import Data.Array as Array
 import Data.Homogeneous.Record (fromHomogeneous, homogeneous)
@@ -13,7 +12,7 @@ import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Monoid.Endo (Endo(..))
 import Data.Newtype (unwrap, wrap)
-import Data.Traversable (foldl, traverse)
+import Data.Traversable (foldl)
 import Data.Tuple (fst, snd)
 import Data.Tuple.Nested ((/\), type (/\))
 import Feedback.FullGraph (FullGraph)
@@ -22,22 +21,18 @@ import Math (abs)
 import Type.Proxy (Proxy(..))
 import WAGS.Control.Functions (imodifyRes)
 import WAGS.Control.Indexed (IxWAG)
+import WAGS.Lib.Cofree (cofreeTraversal_)
 import WAGS.Run (RunAudio, RunEngine, TriggeredScene(..))
 
 doPlays :: forall proof. Number -> Acc -> IxWAG RunAudio RunEngine proof Res FullGraph FullGraph Acc
 doPlays time acc = do
   let split = Array.span (\tp -> tp.starts - time < 0.15) acc.stagedAudio
-  acc2 <- execStateT
-    ( traverse
-        ( \tp -> do
-            a <- get
-            lift $ unTriggerAudio (extract a.triggers) { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
-            put (a { triggers = unwrap $ unwrapCofree a.triggers })
+  triggers <- cofreeTraversal_
+        ( \tp a -> do
+            unTriggerAudio a { buffer: tp.buffer, timeOffset: max 0.0 (tp.starts - time) }
         )
-        (split.init)
-    )
-    acc
-  pure (acc2 { stagedAudio = split.rest })
+        split.init acc.triggers
+  pure (acc { stagedAudio = split.rest, triggers = triggers })
 
 doFail :: Number -> Number -> Array VisualNote -> Result -> Array VisualNote /\ Result
 doFail time wdw s r = rest

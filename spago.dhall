@@ -34,6 +34,7 @@
   , "typelevel"
   , "unsafe-coerce"
   , "wags"
+  , "wags-lib"
   , "web-events"
   , "web-html"
   , "web-uievents"
