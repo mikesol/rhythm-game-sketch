@@ -20,6 +20,7 @@ import FRP.Event (fold, makeEvent, subscribe)
 import Feedback.Control (Action(..), State)
 import Feedback.Engine (piece)
 import Feedback.Oracle (oracle)
+import Feedback.SG (wavs)
 import Feedback.Setup (setup)
 import Feedback.Types (Buffers, Key(..), Res, Result(..), Trigger(..))
 import Foreign.Object as Object
@@ -148,7 +149,7 @@ handleAction buffers = case _ of
                   )
                   {}
                   ffiAudio
-                  (piece setup oracle)
+                  (piece wavs setup oracle)
               )
               ( \(o :: TriggeredRun Res ()) -> do
                   let

@@ -173,7 +173,7 @@ let additions =
           , "simple-json"
           ]
         , repo = "https://github.com/mikesol/purescript-wags.git"
-        , version = "v0.7.0"
+        , version = "v0.7.2"
         }, painting =
         { dependencies =
           [ "canvas"

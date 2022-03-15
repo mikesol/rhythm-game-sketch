@@ -29,6 +29,7 @@
   , "prelude"
   , "profunctor-lenses"
   , "refs"
+  , "sized-vectors"
   , "transformers"
   , "tuples"
   , "typelevel"
