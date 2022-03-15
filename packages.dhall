@@ -195,7 +195,7 @@ let additions =
           , "halogen-css"
           ]
         , repo = "https://github.com/mikesol/purescript-wags-lib.git"
-        , version = "v0.0.100"
+        , version = "v0.0.101"
         }
       , everythings-better-with-variants =
         { dependencies =
