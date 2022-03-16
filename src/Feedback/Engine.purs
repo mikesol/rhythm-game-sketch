@@ -12,12 +12,17 @@ import WAGS.Patch (ipatch)
 import WAGS.Run (RunAudio, RunEngine)
 
 createFrame :: forall res. IxWAG RunAudio RunEngine Frame0 res () FullGraph Unit
-createFrame = ipatch { microphone: empty, mediaElement: empty }
+createFrame = ipatch
+  { microphone: empty
+  , mediaElement: empty
+  , subgraphs: {}
+  , tumults: {}
+  }
 
 -- we inject oracle and initial acc to avoid rebuilding the engine whenever we change these
 piece
   :: forall acc env res
-  . Monoid res
+   . Monoid res
   => (forall proof. env -> IxWAG RunAudio RunEngine proof res FullGraph FullGraph acc)
   -> ( forall proof
         . env
