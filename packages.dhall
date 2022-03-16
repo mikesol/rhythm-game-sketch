@@ -173,7 +173,7 @@ let additions =
           , "simple-json"
           ]
         , repo = "https://github.com/mikesol/purescript-wags.git"
-        , version = "v0.7.2"
+        , version = "v0.7.3"
         }, painting =
         { dependencies =
           [ "canvas"
@@ -195,7 +195,7 @@ let additions =
           , "halogen-css"
           ]
         , repo = "https://github.com/mikesol/purescript-wags-lib.git"
-        , version = "v0.0.101"
+        , version = "v0.0.102"
         }
       , everythings-better-with-variants =
         { dependencies =

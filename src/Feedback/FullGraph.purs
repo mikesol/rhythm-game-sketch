@@ -12,14 +12,12 @@ import WAGS.WebAPI (BrowserAudioBuffer)
 
 type SubgraphSig = Subgraph
   ()
-  (Vec D32 Unit)
   ( AsSubgraph
       "buffy"
       ()
-      Unit
       (Maybe (Number /\ BrowserAudioBuffer))
   )
-  (Int -> Unit -> Maybe (Number /\ BrowserAudioBuffer))
+  (Vec D32 (Maybe (Number /\ BrowserAudioBuffer)))
 
 type SubgraphGraph = (buffy :: TPlayBuf /\ {})
 
