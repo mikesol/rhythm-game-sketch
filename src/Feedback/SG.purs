@@ -44,8 +44,8 @@ subFrameLoop (Just (time /\ buf)) _ =
 
 wavs :: SubgraphSig
 wavs = CTOR.Subgraph
-  ( AsSubgraph
-      ( const $ SG.istart (\_ -> createFrameSub)   (SG.iloop subFrameLoop)
+  { subgraphMaker: AsSubgraph
+      ( const $ SG.istart (\_ -> createFrameSub) (SG.iloop subFrameLoop)
       )
-  )
-  (fill $ const Nothing)
+  , envs: fill $ const Nothing
+  }

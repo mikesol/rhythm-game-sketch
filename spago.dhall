@@ -30,6 +30,7 @@
   , "profunctor-lenses"
   , "refs"
   , "sized-vectors"
+  , "row-options"
   , "transformers"
   , "tuples"
   , "typelevel"
