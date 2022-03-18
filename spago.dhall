@@ -29,6 +29,7 @@
   , "prelude"
   , "profunctor-lenses"
   , "refs"
+  , "row-options"
   , "transformers"
   , "tuples"
   , "typelevel"
